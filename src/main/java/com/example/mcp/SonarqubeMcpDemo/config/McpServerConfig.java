@@ -1,23 +1,18 @@
 package com.example.mcp.SonarqubeMcpDemo.config;
 
-import com.example.mcp.SonarqubeMcpDemo.tools.SonarQubeMcpTools;
-import org.springframework.ai.tool.ToolCallbackProvider;
-import org.springframework.ai.tool.method.MethodToolCallbackProvider;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Registers the SonarQube tools with the Spring AI MCP server.
- * The {@link ToolCallbackProvider} bean is auto-detected by the MCP server auto-configuration
- * and published to any connected MCP client as available tools.
+ * MCP server configuration.
+ *
+ * <p>Tool registration is automatic: Spring AI MCP server auto-config picks up
+ * all {@code ToolCallbackProvider} beans in the context. The
+ * {@code allMcpToolCallbackProvider} bean defined in {@link McpClientsConfig}
+ * exposes tools from both the official GitHub MCP server and the official
+ * SonarQube MCP server to any connected MCP client (e.g. Claude Desktop).
+ *
+ * <p>No manual bean registration is needed here.
  */
 @Configuration
 public class McpServerConfig {
-
-    @Bean
-    public ToolCallbackProvider sonarQubeToolCallbackProvider(SonarQubeMcpTools sonarQubeMcpTools) {
-        return MethodToolCallbackProvider.builder()
-                .toolObjects(sonarQubeMcpTools)
-                .build();
-    }
 }

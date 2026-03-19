@@ -35,13 +35,13 @@ services:
     container_name: github-mcp-server
     ports:
       - "3000:3000"
-    # Run in SSE (HTTP) mode so Spring AI MCP client can connect
-    # The GitHub MCP server supports: stdio | sse | streamable-http
-    command: ["--transport", "sse", "--port", "3000"]
+    # Run in HTTP mode so Spring AI MCP client can connect via SSE
+    # The GitHub MCP server uses subcommand: http --host 0.0.0.0 --port 3000
+    command: ["http", "--port", "3000"]
     environment:
       - GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_TOKEN}
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3000/sse || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5

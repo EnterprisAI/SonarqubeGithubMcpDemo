@@ -1,6 +1,10 @@
 package com.example.mcp.SonarqubeMcpDemo.tools;
 
 import com.example.mcp.SonarqubeMcpDemo.client.SonarQubeClient;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Service;
@@ -8,11 +12,14 @@ import org.springframework.stereotype.Service;
 /**
  * MCP tools that expose SonarQube functionality to AI assistants.
  * Each method annotated with {@code @Tool} becomes a callable tool in the MCP protocol.
+ *
+ * <p>Responses are trimmed to only the fields the LLM needs, keeping token usage low.
  */
 @Service
 public class SonarQubeMcpTools {
 
     private final SonarQubeClient client;
+    private final ObjectMapper mapper = new ObjectMapper();
 
     public SonarQubeMcpTools(SonarQubeClient client) {
         this.client = client;
@@ -42,7 +49,7 @@ public class SonarQubeMcpTools {
         return client.get("/api/qualitygates/project_status?projectKey=" + projectKey);
     }
 
-    @Tool(description = "Search for code issues in a SonarQube project. Can be filtered by severity (INFO, MINOR, MAJOR, CRITICAL, BLOCKER) and type (BUG, VULNERABILITY, CODE_SMELL). Leave blank to get all issues.")
+    @Tool(description = "Search for code issues in a SonarQube project. Returns a compact list: severity, type, message, file path, and line number. Filter by severity (INFO, MINOR, MAJOR, CRITICAL, BLOCKER) and/or type (BUG, VULNERABILITY, CODE_SMELL).")
     public String searchIssues(
             @ToolParam(description = "The SonarQube project key, e.g. 'my-project'") String projectKey,
             @ToolParam(description = "Issue severity filter: INFO, MINOR, MAJOR, CRITICAL, or BLOCKER. Leave empty for all severities.") String severity,
@@ -50,7 +57,7 @@ public class SonarQubeMcpTools {
 
         StringBuilder path = new StringBuilder("/api/issues/search?componentKeys=")
                 .append(projectKey)
-                .append("&ps=20&additionalFields=comments");
+                .append("&ps=20");
 
         if (severity != null && !severity.isBlank()) {
             path.append("&severities=").append(severity.toUpperCase());
@@ -59,7 +66,8 @@ public class SonarQubeMcpTools {
             path.append("&types=").append(type.toUpperCase());
         }
 
-        return client.get(path.toString());
+        String raw = client.get(path.toString());
+        return slimIssues(raw);
     }
 
     @Tool(description = "Get security hotspots that require manual review for a SonarQube project. Hotspots highlight security-sensitive code that may or may not be vulnerabilities.")
@@ -72,5 +80,41 @@ public class SonarQubeMcpTools {
     @Tool(description = "Get a summary of the SonarQube server version, plugins, and edition information.")
     public String getServerInfo() {
         return client.get("/api/server/version");
+    }
+
+    /**
+     * Strips verbose SonarQube issue JSON down to the fields the LLM needs:
+     * severity, type, message, component (file path), and line.
+     * This keeps the token footprint small enough for 8k-token model limits.
+     */
+    private String slimIssues(String raw) {
+        try {
+            JsonNode root = mapper.readTree(raw);
+            if (root.has("error")) return raw; // pass errors through unchanged
+
+            int total = root.path("paging").path("total").asInt(0);
+            JsonNode issues = root.path("issues");
+
+            ArrayNode slim = mapper.createArrayNode();
+            for (JsonNode issue : issues) {
+                ObjectNode s = mapper.createObjectNode();
+                s.put("severity", issue.path("severity").asText());
+                s.put("type",     issue.path("type").asText());
+                s.put("message",  issue.path("message").asText());
+                // component looks like "project:src/main/java/Foo.java" — strip the project prefix
+                String component = issue.path("component").asText();
+                int colon = component.indexOf(':');
+                s.put("file", colon >= 0 ? component.substring(colon + 1) : component);
+                s.put("line", issue.path("line").asInt(0));
+                slim.add(s);
+            }
+
+            ObjectNode result = mapper.createObjectNode();
+            result.put("total", total);
+            result.set("issues", slim);
+            return mapper.writeValueAsString(result);
+        } catch (Exception e) {
+            return raw; // if parsing fails, return raw JSON
+        }
     }
 }

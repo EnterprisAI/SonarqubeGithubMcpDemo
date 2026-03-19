@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -31,11 +32,11 @@ import java.util.concurrent.CompletableFuture;
  *   Events      : Pull requests
  * </pre>
  *
- * <p>When a PR is opened or updated the webhook triggers an async LLM analysis:
+ * <p>When a PR is opened or updated the webhook triggers an async LLM analysis that:
  * <ol>
- *   <li>Gets PR details and changed files via GitHub MCP tools</li>
+ *   <li>Gets PR details and changed files via GitHub API tools</li>
  *   <li>Fetches SonarQube issues for the repository's project</li>
- *   <li>Posts matched issues as a PR review comment via GitHub MCP tools</li>
+ *   <li>Posts matched issues as a PR review comment</li>
  * </ol>
  *
  * <p>The SonarQube project key defaults to the repository name (lowercase).
@@ -54,7 +55,7 @@ public class GitHubWebhookController {
     public GitHubWebhookController(
             PRAnalysisService prAnalysisService,
             GitHubProperties gitHubProperties,
-            ObjectMapper objectMapper) {
+            @Qualifier("mcpServerObjectMapper") ObjectMapper objectMapper) {
         this.prAnalysisService = prAnalysisService;
         this.gitHubProperties = gitHubProperties;
         this.objectMapper = objectMapper;
