@@ -1,0 +1,44 @@
+spring:
+  ai:
+    mcp:
+      server:
+        name: sonarqube-github-mcp-server
+        version: 1.0.0
+        # SSE transport — web server must be running
+        # Switch to stdio: true only when using Claude Desktop / CLI integration
+        stdio: false
+
+      # MCP Client — connects to the GitHub MCP server running in Docker
+      # Spring AI auto-creates McpSyncClient beans, exposes GitHub tools to ChatClient
+      client:
+        sse:
+          connections:
+            github:
+              url: ${GITHUB_MCP_URL:http://localhost:3000/sse}
+
+    # GitHub Models uses the Azure AI Inference API (OpenAI-compatible).
+    openai:
+      base-url: https://models.inference.ai.azure.com
+      api-key: ${GITHUB_TOKEN}
+      chat:
+        completions-path: /chat/completions
+        options:
+          model: ${GITHUB_MODEL:gpt-4o-mini}
+
+# SonarQube connection — override via SONARQUBE_URL and SONARQUBE_TOKEN env vars
+sonarqube:
+  url: ${SONARQUBE_URL:http://localhost:9000}
+  token: ${SONARQUBE_TOKEN:}
+
+# GitHub configuration — token is shared with GITHUB_TOKEN (used for both Models API and GitHub API)
+github:
+  token: ${GITHUB_TOKEN:}
+  webhook-secret: ${GITHUB_WEBHOOK_SECRET:}
+
+server:
+  port: 8080
+
+logging:
+  level:
+    root: INFO
+    com.example.mcp: DEBUG
