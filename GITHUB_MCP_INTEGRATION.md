@@ -32,15 +32,18 @@ Developer opens / updates a PR
                github.com                  sonarcloud.io (or self-hosted)
 ```
 
-**End-to-end flow:**
+**End-to-end flow (recommended — GitHub Actions driven):**
 1. A PR is opened/updated on GitHub
-2. GitHub sends a `pull_request` webhook to `POST /webhook/github` (or you call `POST /analyze-pr` manually)
-3. `PRAnalysisService` calls the LLM with 5 relevant MCP tools
-4. LLM calls **GitHub MCP tools** (`pull_request_read`) to get PR details and changed files
-5. LLM calls **SonarQube MCP tools** (`search_sonar_issues_in_projects`) to get open issues
-6. LLM matches issues to changed files and writes fix suggestions
-7. LLM calls **GitHub MCP tools** (`pull_request_review_write`) to post a review on the PR
-8. Developer sees the suggestions inline and fixes them before merge
+2. **GitHub Actions** runs the SonarCloud scan (`mvn sonar:sonar`) — this populates SonarCloud's database with issues from the PR branch
+3. After the scan completes, the workflow calls `POST /analyze-pr` on the MCP server
+4. `PRAnalysisService` calls the LLM with 5 relevant MCP tools
+5. LLM calls **GitHub MCP tools** (`pull_request_read`) to get PR details and changed files
+6. LLM calls **SonarQube MCP tools** (`search_sonar_issues_in_projects`) to get the freshly scanned issues
+7. LLM matches issues to changed files and writes fix suggestions
+8. LLM calls **GitHub MCP tools** (`pull_request_review_write`) to post a review on the PR
+9. Developer sees the suggestions inline and fixes them before merge
+
+> **Important:** `analyze-pr` reads issues that are **already in SonarCloud's database**. The SonarCloud scan must run before `analyze-pr` is called — otherwise it will find 0 issues. The GitHub Actions workflow handles this sequencing automatically.
 
 ---
 
@@ -238,16 +241,25 @@ Invoke-RestMethod -Uri http://localhost:8080/chat `
 
 Register your server as a GitHub webhook so analysis runs automatically whenever a PR is opened or updated.
 
-#### Step C1 — Expose your local server with ngrok
+#### Step C1 — Expose your local server with a tunnel
 
-GitHub cannot reach `localhost:8080` directly. Use ngrok to create a public tunnel:
+GitHub cannot reach `localhost:8080` directly. Use a tunnel to create a public URL.
 
+**localtunnel (recommended — free, no account needed):**
 ```cmd
-:: Install ngrok from https://ngrok.com/download, then:
-ngrok http 8080
+npm install -g localtunnel
+lt --port 8080 --subdomain my-mcp-server
+:: URL: https://my-mcp-server.loca.lt
 ```
 
-Note the `Forwarding` URL — something like `https://abc123.ngrok-free.app`.
+**ngrok (alternative):**
+```cmd
+:: Install from https://ngrok.com/download, then:
+ngrok http 8080
+:: URL: https://abc123.ngrok-free.app
+```
+
+Note the public URL from either tool.
 
 #### Step C2 — Set the webhook secret (optional but recommended)
 
@@ -338,6 +350,88 @@ Key tools used for PR analysis:
 | `get_project_quality_gate_status` | Check if the project passes the quality gate |
 
 Other available tools include listing projects, getting metrics, and more.
+
+---
+
+## GitHub Actions Setup (Recommended Automated Flow)
+
+The workflow file lives in the **target repo** (`springboot-sonar-snyk-demo`), not in this MCP server project. It runs the SonarCloud scan and then calls `analyze-pr` automatically on every PR.
+
+### Workflow file
+
+The workflow is already committed at `.github/workflows/sonar-pr-review.yml` in `EnterprisAI/springboot-sonar-snyk-demo`. It:
+1. Triggers on `pull_request` (opened, synchronize, reopened)
+2. Checks out with full history (`fetch-depth: 0`) — required by SonarCloud
+3. Runs `mvn verify sonar:sonar` with PR decoration flags
+4. Waits 15 seconds for SonarCloud to process the results
+5. Calls `POST /analyze-pr` on the MCP server (skipped if `MCP_SERVER_URL` variable is not set)
+
+### Required GitHub Actions configuration
+
+Go to **Repository → Settings → Secrets and variables → Actions** in `EnterprisAI/springboot-sonar-snyk-demo`:
+
+| Type | Name | Value |
+|------|------|-------|
+| **Secret** | `SONAR_TOKEN` | SonarCloud user token (`a3bef20d...`) ✅ already set |
+| **Variable** | `SONAR_PROJECT_KEY` | `springboot-sonar-snyk-demo` ✅ already set |
+| **Variable** | `SONAR_ORG` | `vivid-vortex-devops` ✅ already set |
+| **Variable** | `MCP_SERVER_URL` | Public URL of your MCP server (see below) |
+
+### Setting MCP_SERVER_URL
+
+The MCP server must be publicly reachable for GitHub Actions (running on GitHub's cloud) to call it.
+
+**Option A — localtunnel (free, no account needed):**
+
+```bash
+# Install once
+npm install -g localtunnel
+
+# Start tunnel (run while app is running)
+lt --port 8080 --subdomain my-mcp-server
+# URL: https://my-mcp-server.loca.lt
+```
+
+> localtunnel may show a "tunnel password" page on first visit. Use the IP shown on that page as the password, or add `--allow-invalid-cert` to bypass it.
+
+**Option B — ngrok (free tier, account required for static domains):**
+
+```bash
+ngrok http 8080
+# URL: https://abc123.ngrok-free.app
+```
+
+**Option C — Deployed server (production):** Use the server's fixed public URL.
+
+Once you have the URL, set it as a GitHub Actions variable:
+
+```bash
+# Via GitHub UI: Repository → Settings → Secrets and variables → Actions → Variables → New
+# Name: MCP_SERVER_URL
+# Value: https://my-mcp-server.loca.lt
+```
+
+Or via API:
+```bash
+curl -X POST \
+  -H "Authorization: Bearer ghp_yourtoken" \
+  -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/repos/EnterprisAI/springboot-sonar-snyk-demo/actions/variables" \
+  -d '{"name":"MCP_SERVER_URL","value":"https://my-mcp-server.loca.lt"}'
+```
+
+### Triggering a test run
+
+After setting `MCP_SERVER_URL`, push a commit to an open PR (or re-open PR #1):
+
+```bash
+# Re-trigger the workflow on PR #1 by pushing an empty commit to its branch
+git checkout Vivid-Vortex-patch-1
+git commit --allow-empty -m "trigger CI"
+git push origin Vivid-Vortex-patch-1
+```
+
+Watch the Actions tab in the GitHub repo — the `SonarCloud Scan + AI PR Review` workflow will run.
 
 ---
 

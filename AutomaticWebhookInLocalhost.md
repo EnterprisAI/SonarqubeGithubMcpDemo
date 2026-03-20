@@ -12,16 +12,25 @@ Your app already has `/webhook/github` listening for `POST` requests. When GitHu
 
 ### 2. A public URL for your server
 
-GitHub cannot reach `localhost:8080` from the internet. Use [ngrok](https://ngrok.com/) to create a public tunnel:
+GitHub cannot reach `localhost:8080` from the internet. Use a tunnel tool to create a public URL.
 
+**localtunnel (recommended — free, open-source, no account needed):**
 ```bash
-# Install ngrok from https://ngrok.com/download, then:
-ngrok http 8080
+npm install -g localtunnel
+lt --port 8080 --subdomain my-mcp-server
+# URL: https://my-mcp-server.loca.lt  (stable as long as the process runs)
 ```
 
-ngrok gives you a URL like `https://abc123.ngrok-free.app` that forwards to your `localhost:8080`. Every request to that URL hits your Spring Boot app.
+**ngrok (alternative):**
+```bash
+# Install from https://ngrok.com/download, then:
+ngrok http 8080
+# URL: https://abc123.ngrok-free.app
+```
 
-> **Free tier note:** ngrok assigns a new URL each time you restart it. Update the GitHub webhook Payload URL after each restart. To get a stable URL, create a free ngrok account and use a [static domain](https://ngrok.com/blog-post/free-static-domains-ngrok-users).
+Both tools give you a public URL that forwards to `localhost:8080`.
+
+> **localtunnel note:** The first browser visit may show a "tunnel password" page. Enter the IP address shown on that page to proceed. Programmatic clients (curl, GitHub webhooks) are not affected.
 
 ### 3. The webhook secret (`GITHUB_WEBHOOK_SECRET`)
 
@@ -31,14 +40,21 @@ This is a shared secret you choose (any random string, e.g. `mysecret123`). GitH
 
 ## Step-by-Step Setup
 
-### Step 1 — Start ngrok
+### Step 1 — Start the tunnel
 
+**localtunnel:**
 ```bash
-ngrok http 8080
-# Note the Forwarding URL, e.g.: https://abc123.ngrok-free.app
+lt --port 8080 --subdomain my-mcp-server
+# URL: https://my-mcp-server.loca.lt
 ```
 
-Keep this terminal open — closing it stops the tunnel.
+**ngrok:**
+```bash
+ngrok http 8080
+# URL: https://abc123.ngrok-free.app
+```
+
+Keep the terminal open — closing it stops the tunnel.
 
 ### Step 2 — Start the app with the webhook secret
 
@@ -105,7 +121,7 @@ You cannot set custom headers from GitHub's webhook UI. Instead, use the `sonarP
 
 ## For Production (Beyond Dev)
 
-ngrok URLs change on every restart (free tier). For a stable, always-on setup:
+localtunnel subdomains are stable within a session but not persistent across restarts. For a stable, always-on setup:
 
 1. Deploy the Spring Boot app to a cloud VM or container service (AWS EC2, Azure App Service, Railway, Render, etc.)
 2. Use its fixed public URL directly in the GitHub webhook config — no ngrok needed
