@@ -1,4 +1,8 @@
-# SonarQube MCP Server
+# SonarQube MCP Server — Legacy Custom Tools Reference
+
+> **Note:** This document describes the original `SonarqubeMcpDemo` approach where SonarQube was wrapped with custom `@Tool` methods. The current `SonarqubeGithubMcpDemo` project uses the **official SonarQube MCP server** (`mcp/sonarqube` Docker image) and the **official GitHub MCP server** (`ghcr.io/github/github-mcp-server`) instead. See `GITHUB_MCP_INTEGRATION.md` for the current setup guide.
+
+---
 
 A Spring Boot application that acts as a **Model Context Protocol (MCP) server**, exposing SonarQube code quality data as tools that AI assistants (like Claude) can call directly.
 
