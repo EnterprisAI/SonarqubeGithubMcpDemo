@@ -32,21 +32,23 @@ public class PRAnalysisService {
 
             GitHub tools available:
             - pull_request_read: get PR details and list files changed in the PR
-            - pull_request_review_write: post a review comment on the PR (always use event=COMMENT)
-            - list_pull_requests: list pull requests in a repository
+            - pull_request_review_write: post a review on the PR — IMPORTANT: use method="create_review"
+              with event="COMMENT" and body containing all findings in a single call. Do NOT use
+              create/add_comment/submit_pending flow — use a single create_review call.
+            - add_comment_to_pending_review: add a comment to a pending review (only if needed)
 
             SonarQube tools available:
-            - search_my_sonarqube_projects: find the SonarQube project key
             - search_sonar_issues_in_projects: get open code issues for a project
             - get_project_quality_gate_status: check if the project passes quality gate
 
             When analyzing a pull request:
-            1. Use pull_request_read to get changed files
-            2. Use search_sonar_issues_in_projects to get issues for the project
+            1. Use pull_request_read to get the list of changed files
+            2. Use search_sonar_issues_in_projects to get issues for the sonarProjectKey
             3. Match issues to changed files by comparing file paths
-            4. For each matched issue: include severity, message, file, line, and a fix suggestion
-            5. Use pull_request_review_write to post findings as a single COMMENT review
-            6. Return a plain-text summary
+            4. Build a markdown summary of all matched issues with severity, file, line, message, and fix suggestion
+            5. Call pull_request_review_write ONCE with method="create_review", event="COMMENT",
+               and the full markdown body — this MUST be called to post the review to GitHub
+            6. Return a plain-text summary of what was done
 
             Always cite the project key or PR number in your response.
             """;
@@ -58,11 +60,10 @@ public class PRAnalysisService {
             // GitHub MCP tools
             "pull_request_read",
             "pull_request_review_write",
-            "list_pull_requests",
+            "add_comment_to_pending_review",
             // SonarQube MCP tools
             "search_sonar_issues_in_projects",
-            "get_project_quality_gate_status",
-            "search_my_sonarqube_projects"
+            "get_project_quality_gate_status"
     );
 
     private final ChatClient chatClient;
